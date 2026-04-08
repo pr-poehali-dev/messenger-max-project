@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 
 type Section = 'chats' | 'groups' | 'calls' | 'contacts' | 'notifications' | 'settings';
@@ -169,15 +169,23 @@ function SearchBar({ value, onChange, placeholder }: { value: string; onChange: 
 function ChatWindow({ chat, onBack }: { chat: Chat; onBack: () => void }) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState(chat.messages);
+  const [activeCall, setActiveCall] = useState<{ name: string; avatar: string } | null>(null);
 
   const send = () => {
     if (!input.trim()) return;
-    setMessages(prev => [...prev, { id: Date.now(), text: input, time: new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }), fromMe: true }]);
+    setMessages(prev => [...prev, {
+      id: Date.now(), text: input,
+      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Samara' }),
+      fromMe: true
+    }]);
     setInput('');
   };
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
+      {activeCall && (
+        <CallScreen name={activeCall.name} avatar={activeCall.avatar} onEnd={() => setActiveCall(null)} />
+      )}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--glass-border)] flex-shrink-0" style={{ background: 'var(--surface-2)' }}>
         <button onClick={onBack} className="md:hidden p-1.5 rounded-lg hover:bg-[var(--surface-3)] transition-colors">
           <Icon name="ArrowLeft" size={18} className="text-slate-400" />
@@ -188,10 +196,12 @@ function ChatWindow({ chat, onBack }: { chat: Chat; onBack: () => void }) {
           <p className="text-xs" style={{ color: 'var(--neon-green)' }}>{chat.online ? 'В сети' : 'Не в сети'}</p>
         </div>
         <div className="flex gap-1">
-          <button className="p-2 rounded-xl hover:bg-[var(--surface-3)] transition-colors">
-            <Icon name="Phone" size={16} className="text-slate-400" />
+          <button onClick={() => setActiveCall({ name: chat.name, avatar: chat.avatar })}
+            className="p-2 rounded-xl hover:bg-[var(--surface-3)] transition-all hover:scale-110" title="Аудиозвонок">
+            <Icon name="Phone" size={16} style={{ color: 'var(--neon-cyan)' }} />
           </button>
-          <button className="p-2 rounded-xl hover:bg-[var(--surface-3)] transition-colors">
+          <button onClick={() => setActiveCall({ name: chat.name, avatar: chat.avatar })}
+            className="p-2 rounded-xl hover:bg-[var(--surface-3)] transition-all hover:scale-110" title="Видеозвонок">
             <Icon name="Video" size={16} className="text-slate-400" />
           </button>
           <button className="p-2 rounded-xl hover:bg-[var(--surface-3)] transition-colors">
@@ -306,13 +316,185 @@ function ChatsSection({ search }: { search: string }) {
   );
 }
 
+// ── Экран активного звонка ──────────────────────────────────────────
+function CallScreen({ name, avatar, onEnd }: { name: string; avatar: string; onEnd: () => void }) {
+  const [muted, setMuted] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(true);
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setSeconds(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-between py-16 px-8 animate-fade-in"
+      style={{ background: 'linear-gradient(160deg, #0d1117 0%, #0a1628 50%, #0d1117 100%)' }}>
+      {/* Фоновые круги */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full opacity-10 animate-pulse-slow"
+          style={{ background: 'radial-gradient(circle, var(--neon-cyan), transparent 70%)' }} />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full opacity-15 animate-pulse-slow"
+          style={{ background: 'radial-gradient(circle, var(--neon-cyan), transparent 70%)', animationDelay: '0.5s' }} />
+      </div>
+
+      <div className="flex flex-col items-center gap-4 z-10">
+        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center text-3xl font-bold text-white"
+          style={{ boxShadow: '0 0 40px rgba(0,212,255,0.4)' }}>
+          {avatar}
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-slate-100">{name}</p>
+          <p className="text-sm mt-1 font-mono" style={{ color: 'var(--neon-cyan)' }}>{fmt(seconds)}</p>
+          <p className="text-xs text-slate-500 mt-1">Голосовой вызов</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-6 z-10">
+        <button onClick={() => setMuted(p => !p)}
+          className="flex flex-col items-center gap-2 group">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center transition-all"
+            style={{ background: muted ? '#f87171' : 'var(--surface-3)', border: '1px solid var(--glass-border)' }}>
+            <Icon name={muted ? 'MicOff' : 'Mic'} size={22} className="text-white" />
+          </div>
+          <span className="text-xs text-slate-500">{muted ? 'Вкл. звук' : 'Выкл. звук'}</span>
+        </button>
+
+        <button onClick={onEnd}
+          className="flex flex-col items-center gap-2">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center transition-all hover:scale-105"
+            style={{ background: '#ef4444', boxShadow: '0 0 24px rgba(239,68,68,0.5)' }}>
+            <Icon name="PhoneOff" size={26} className="text-white" />
+          </div>
+          <span className="text-xs text-slate-500">Завершить</span>
+        </button>
+
+        <button onClick={() => setSpeakerOn(p => !p)}
+          className="flex flex-col items-center gap-2 group">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center transition-all"
+            style={{ background: speakerOn ? 'rgba(0,212,255,0.2)' : 'var(--surface-3)', border: `1px solid ${speakerOn ? 'var(--neon-cyan)' : 'var(--glass-border)'}` }}>
+            <Icon name={speakerOn ? 'Volume2' : 'VolumeX'} size={22} style={{ color: speakerOn ? 'var(--neon-cyan)' : 'white' }} />
+          </div>
+          <span className="text-xs text-slate-500">Динамик</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Модал создания группы ───────────────────────────────────────────
+function CreateGroupModal({ onClose, onCreate }: { onClose: () => void; onCreate: (g: Group) => void }) {
+  const [name, setName] = useState('');
+  const [emoji, setEmoji] = useState('💬');
+  const [step, setStep] = useState<'form' | 'done'>('form');
+  const emojis = ['💬', '💼', '🏠', '🎮', '📚', '🏋️', '🎵', '✈️', '🍕', '💡', '🚀', '🌿'];
+
+  const submit = () => {
+    if (!name.trim()) return;
+    onCreate({
+      id: Date.now(),
+      name: name.trim(),
+      emoji,
+      lastMessage: 'Группа создана',
+      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Samara' }),
+      members: 1,
+      unread: 0,
+    });
+    setStep('done');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in"
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-sm rounded-3xl p-6 animate-scale-in"
+        style={{ background: 'var(--surface-2)', border: '1px solid var(--glass-border)' }}>
+        {step === 'form' ? (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-slate-100">Новая группа</h3>
+              <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-[var(--surface-3)]">
+                <Icon name="X" size={16} className="text-slate-400" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-2">Выбери иконку</p>
+            <div className="grid grid-cols-6 gap-2 mb-4">
+              {emojis.map(e => (
+                <button key={e} onClick={() => setEmoji(e)}
+                  className="w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all"
+                  style={{
+                    background: emoji === e ? 'rgba(0,212,255,0.15)' : 'var(--surface-3)',
+                    border: `1px solid ${emoji === e ? 'var(--neon-cyan)' : 'transparent'}`,
+                  }}>
+                  {e}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-slate-500 mb-2">Название группы</p>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              placeholder="Например: Рабочий чат"
+              maxLength={40}
+              className="w-full border rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none transition-all mb-4"
+              style={{ background: 'var(--surface-3)', borderColor: name ? 'var(--neon-cyan)' : 'var(--glass-border)' }}
+              autoFocus
+            />
+
+            <button onClick={submit} disabled={!name.trim()}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-all"
+              style={{
+                background: name.trim() ? 'var(--neon-cyan)' : 'var(--surface-3)',
+                color: name.trim() ? 'var(--surface-1)' : '#64748b',
+                boxShadow: name.trim() ? '0 0 20px rgba(0,212,255,0.3)' : 'none',
+              }}>
+              Создать группу
+            </button>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-4 py-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-3xl">
+              {emoji}
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-slate-100">{name}</p>
+              <p className="text-sm text-slate-400 mt-1">Группа успешно создана!</p>
+            </div>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(34,211,160,0.15)' }}>
+              <Icon name="Check" size={22} style={{ color: 'var(--neon-green)' }} />
+            </div>
+            <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-medium transition-all"
+              style={{ background: 'var(--surface-3)', color: 'var(--neon-cyan)', border: '1px solid var(--glass-border)' }}>
+              Закрыть
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function GroupsSection({ search }: { search: string }) {
+  const [groups, setGroups] = useState(GROUPS);
+  const [showCreate, setShowCreate] = useState(false);
   const filtered = useMemo(() =>
-    GROUPS.filter(g => g.name.toLowerCase().includes(search.toLowerCase())),
-    [search]
+    groups.filter(g => g.name.toLowerCase().includes(search.toLowerCase())),
+    [search, groups]
   );
   return (
     <div className="flex flex-col h-full">
+      {showCreate && (
+        <CreateGroupModal
+          onClose={() => setShowCreate(false)}
+          onCreate={g => { setGroups(prev => [g, ...prev]); }}
+        />
+      )}
       <div className="p-4 border-b border-[var(--glass-border)]">
         <h2 className="text-lg font-semibold text-slate-100 mb-1">Группы</h2>
         <p className="text-xs text-slate-500">Все ваши групповые чаты</p>
@@ -352,7 +534,9 @@ function GroupsSection({ search }: { search: string }) {
             </div>
           </div>
         ))}
-        <button className="rounded-2xl p-4 border border-dashed border-[var(--glass-border)] flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]">
+        <button
+          onClick={() => setShowCreate(true)}
+          className="rounded-2xl p-4 border border-dashed border-[var(--glass-border)] flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]">
           <Icon name="Plus" size={16} />
           <span className="text-sm font-medium">Создать группу</span>
         </button>
@@ -362,6 +546,7 @@ function GroupsSection({ search }: { search: string }) {
 }
 
 function CallsSection({ search }: { search: string }) {
+  const [activeCall, setActiveCall] = useState<{ name: string; avatar: string } | null>(null);
   const filtered = useMemo(() =>
     CALLS.filter(c => c.name.toLowerCase().includes(search.toLowerCase())),
     [search]
@@ -373,6 +558,13 @@ function CallsSection({ search }: { search: string }) {
   };
   return (
     <div className="flex flex-col h-full">
+      {activeCall && (
+        <CallScreen
+          name={activeCall.name}
+          avatar={activeCall.avatar}
+          onEnd={() => setActiveCall(null)}
+        />
+      )}
       <div className="p-4 border-b border-[var(--glass-border)]">
         <h2 className="text-lg font-semibold text-slate-100 mb-1">Вызовы</h2>
         <p className="text-xs text-slate-500">История звонков</p>
@@ -403,10 +595,18 @@ function CallsSection({ search }: { search: string }) {
               <div className="text-right">
                 <span className="text-xs text-slate-500 font-mono">{call.duration}</span>
                 <div className="flex gap-1 mt-1 justify-end">
-                  <button className="p-1.5 rounded-lg transition-colors hover:bg-[var(--surface-2)]">
+                  <button
+                    onClick={() => setActiveCall({ name: call.name, avatar: call.avatar })}
+                    className="p-1.5 rounded-lg transition-all hover:bg-[var(--surface-2)] hover:scale-110"
+                    title="Аудиозвонок"
+                  >
                     <Icon name="Phone" size={13} style={{ color: 'var(--neon-cyan)' }} />
                   </button>
-                  <button className="p-1.5 rounded-lg transition-colors hover:bg-[var(--surface-2)]">
+                  <button
+                    onClick={() => setActiveCall({ name: call.name, avatar: call.avatar })}
+                    className="p-1.5 rounded-lg transition-all hover:bg-[var(--surface-2)] hover:scale-110"
+                    title="Видеозвонок"
+                  >
                     <Icon name="Video" size={13} className="text-slate-400" />
                   </button>
                 </div>
@@ -600,6 +800,18 @@ export default function App() {
   const [section, setSection] = useState<Section>('chats');
   const [search, setSearch] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
+  const [clock, setClock] = useState(() =>
+    new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Samara' })
+  );
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setClock(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Samara' }));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+
 
   const sectionSearchPlaceholders: Record<Section, string> = {
     chats: 'Поиск по чатам и сообщениям...',
@@ -695,6 +907,13 @@ export default function App() {
           </nav>
 
           <div className="p-3 border-t border-[var(--glass-border)] flex-shrink-0">
+            {/* Часы Тольятти */}
+            <div className="flex items-center gap-2 px-2 py-1.5 mb-1 rounded-xl"
+              style={{ background: 'var(--surface-3)' }}>
+              <Icon name="Clock" size={13} className="text-slate-500 flex-shrink-0" />
+              <span className="text-xs text-slate-400">Тольятти</span>
+              <span className="ml-auto text-xs font-mono font-medium" style={{ color: 'var(--neon-cyan)' }}>{clock}</span>
+            </div>
             <div className="flex items-center gap-3 px-2 py-2 rounded-xl">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
                 ВЫ
@@ -703,7 +922,7 @@ export default function App() {
                 <p className="text-xs font-semibold text-slate-200 truncate">Мой профиль</p>
                 <p className="text-xs" style={{ color: 'var(--neon-green)' }}>В сети</p>
               </div>
-              <button className="p-1.5 rounded-lg transition-colors hover:bg-[var(--surface-3)]">
+              <button onClick={() => setSection('settings')} className="p-1.5 rounded-lg transition-colors hover:bg-[var(--surface-3)]">
                 <Icon name="Settings" size={14} className="text-slate-500" />
               </button>
             </div>
