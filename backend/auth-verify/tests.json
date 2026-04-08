@@ -1,0 +1,18 @@
+{
+  "tests": [
+    {
+      "name": "Verify - missing fields returns 400",
+      "method": "POST",
+      "path": "/",
+      "body": {},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Verify - wrong code returns 400",
+      "method": "POST",
+      "path": "/",
+      "body": {"phone": "+79001234567", "code": "000000"},
+      "expectedStatus": 400
+    }
+  ]
+}
